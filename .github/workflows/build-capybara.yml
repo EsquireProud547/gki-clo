@@ -1,13 +1,3 @@
-# ============================================
-# Capybara Kernel 构建工作流
-# ============================================
-# 功能:
-#   - 使用 Clang r596125 (android17-release) 编译
-#   - 可选集成 ReSukiSU + SUSFS
-#   - 启用源码自带 BBG (Baseband Guard)
-#   - AnyKernel3 打包
-# ============================================
-
 name: Build Capybara Kernel
 
 env:
@@ -40,7 +30,7 @@ permissions:
 
 jobs:
   build:
-    name: "capybara-${{ inputs.enable_susfs == true && 'susfs' || 'clean' }}"
+    name: capybara-${{ inputs.enable_susfs == true && 'susfs' || 'clean' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -50,28 +40,12 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
-      # ==================== Build Info ====================
-      - name: Build configuration summary
-        run: |
-          echo "========================================"
-          echo "    Capybara Kernel Build Config"
-          echo "========================================"
-          echo "Kernel branch  : main"
-          echo "Clang version  : ${{ env.CLANG_VERSION }} (${{ env.CLANG_BRANCH }})"
-          echo "KSU variant    : ReSukiSU"
-          echo "KSU branch     : ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }}"
-          echo "SUSFS          : ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }}"
-          echo "BBG            : built-in (capybara_defconfig)"
-          echo "========================================"
-
-      # ==================== Checkout ====================
       - name: Checkout kernel source
         uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
 
-      # ==================== Free disk space ====================
       - name: Free disk space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -81,7 +55,6 @@ jobs:
           haskell: true
           large-packages: false
 
-      # ==================== Install dependencies ====================
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
@@ -90,7 +63,6 @@ jobs:
             cpio wget curl jq git zip unzip bc \
             gcc g++ make device-tree-compiler python3
 
-      # ==================== Download Clang ====================
       - name: Cache Clang toolchain
         id: cache-clang
         uses: actions/cache@v6
@@ -102,158 +74,105 @@ jobs:
         if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           mkdir -p clang-${{ env.CLANG_VERSION }}
-          echo "Downloading Clang ${{ env.CLANG_VERSION }}..."
           curl -fLSs \
             "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.CLANG_BRANCH }}/${{ env.CLANG_VERSION }}.tar.gz" \
             | tar -xz -C clang-${{ env.CLANG_VERSION }}/
-          echo "Done."
 
-      - name: Verify Clang
+      - name: Setup Clang and ccache
         run: |
           chmod +x clang-${{ env.CLANG_VERSION }}/bin/clang
           echo "$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_PATH
           echo "CLANG_PATH=$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_ENV
-          # Use full path so this step shows the correct clang (GITHUB_PATH only applies to subsequent steps)
-          $PWD/clang-${{ env.CLANG_VERSION }}/bin/clang --version | head -3
+          $PWD/clang-${{ env.CLANG_VERSION }}/bin/clang --version | head -2
 
-      # ==================== Ccache ====================
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
-          key: "capybara-${{ github.sha }}"
-          max-size: "3G"
+          key: capybara-${{ github.sha }}
+          max-size: 3G
 
-      # ==================== Apply ReSukiSU ====================
       - name: Apply ReSukiSU
         run: |
           KSU_BRANCH="${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }}"
           echo "Applying ReSukiSU (branch: $KSU_BRANCH)..."
-
-          # NOTE: setup.sh must be run from kernel root (where drivers/ lives)
-          # It will clone ReSukiSU itself into KernelSU/ directory
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
             | bash -s -- "$KSU_BRANCH"
+          [ -d "KernelSU" ] && echo "ReSukiSU integration successful."
 
-          if [ -d "KernelSU" ]; then
-            echo "ReSukiSU integration successful."
-          else
-            echo "Warning: KernelSU directory not found."
-          fi
-
-      # ==================== Apply SUSFS ====================
       - name: Apply SUSFS patches
         if: inputs.enable_susfs
         run: |
           echo "Applying SUSFS patches..."
-          SUSFS_BRANCH="gki-android15-6.6"
-
           git clone https://gitlab.com/simonpunk/susfs4ksu.git \
-            -b "$SUSFS_BRANCH" --depth 1 susfs4ksu
+            -b gki-android15-6.6 --depth 1 susfs4ksu
 
-          # Run context fixup for CLO kernel before applying SUSFS patch
+          # Fix CLO kernel context before applying SUSFS patch
           if [ -f ".github/actions/fixup_susfs.sh" ]; then
-            echo "Running CLO kernel context fixup..."
             bash .github/actions/fixup_susfs.sh .
           fi
 
-          # Apply main patch
           SUSFS_PATCH="susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
           if [ -f "$SUSFS_PATCH" ]; then
-            patch -p1 --forward < "$SUSFS_PATCH" || echo "Patch partially applied (maybe already applied)."
-          else
-            echo "SUSFS patch not found, skipping."
-            ls susfs4ksu/kernel_patches/ 2>/dev/null
+            patch -p1 --forward < "$SUSFS_PATCH" || true
           fi
 
-          # Copy header files
-          if [ -d "susfs4ksu/kernel_patches/include/linux" ]; then
-            cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>/dev/null || true
-          fi
+          cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>/dev/null || true
+          cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>/dev/null || true
 
-          # Copy fs files
-          if [ -d "susfs4ksu/kernel_patches/fs" ]; then
-            cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>/dev/null || true
-          fi
-
-          echo "SUSFS patch application finished."
-
-      # ==================== Configure kernel ====================
-      - name: Configure kernel (capybara_defconfig)
+      - name: Configure kernel
         run: |
-          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
 
-          # Inject SUSFS configs if enabled
           if [ "${{ inputs.enable_susfs }}" = "true" ]; then
-            echo "Injecting SUSFS configs..."
-            {
-              echo ""
-              echo "# ReSukiSU + SUSFS"
-              echo "CONFIG_KSU=y"
-              echo "CONFIG_KSU_SUSFS=y"
-              echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y"
-              echo "CONFIG_KSU_SUSFS_SUS_PATH=y"
-              echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y"
-              echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y"
-              echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y"
-              echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y"
-            } >> arch/arm64/configs/capybara_defconfig
+            cat >> arch/arm64/configs/capybara_defconfig << 'EOF'
+
+# ReSukiSU + SUSFS
+CONFIG_KSU=y
+CONFIG_KSU_SUSFS=y
+CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_PATH=y
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y
+CONFIG_KSU_SUSFS_SUS_KSTAT=y
+CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+EOF
           fi
 
-          # Ensure BBG is enabled
           grep -q "CONFIG_BBG=y" arch/arm64/configs/capybara_defconfig || \
             echo "CONFIG_BBG=y" >> arch/arm64/configs/capybara_defconfig
 
-          # Run defconfig
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
-          # Verify key configs
           echo "=== Key configs ==="
           for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES; do
-            grep -q "^${cfg}=y" out/.config && echo "$cfg=y" || echo "$cfg=NOT SET"
+            grep -q "^${cfg}=y" out/.config && echo "  $cfg=y" || echo "  $cfg=NOT SET"
           done
 
-      # ==================== Build ====================
       - name: Build kernel
         run: |
-          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export CCACHE_DIR="$PWD/.ccache"
-          export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
-          export CCACHE_NOHASHDIR="true"
-          export CCACHE_HARDLINK="true"
 
           JOBS=$(nproc --all 2>/dev/null || echo 16)
-          echo "Building with $JOBS parallel jobs..."
-
           make -j"$JOBS" O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" 2>&1 | tee build.log
 
           if [ -f "out/arch/arm64/boot/Image" ]; then
-            echo "============================================"
-            echo "  Kernel build SUCCESSFUL!"
-            echo "============================================"
+            echo "Build SUCCESSFUL"
             strings out/arch/arm64/boot/Image | grep 'Linux version' | head -1
-            ls -lh out/arch/arm64/boot/Image
           else
-            echo "============================================"
-            echo "  Kernel build FAILED!"
-            echo "============================================"
-            tail -100 build.log
+            echo "Build FAILED"
+            tail -60 build.log
             exit 1
           fi
 
-      # ==================== Package with AnyKernel3 ====================
-      - name: Package AnyKernel3 zip
+      - name: Package AnyKernel3
         run: |
-          echo "Creating AnyKernel3 flashable zip..."
-
           TEMP_DIR="anykernel_temp"
           rm -rf "$TEMP_DIR"
           cp -r anykernel "$TEMP_DIR"
 
-          # Copy kernel image
           ZIMAGE_DIR="out/arch/arm64/boot"
           if [ -f "$ZIMAGE_DIR/Image.gz-dtb" ]; then
             cp -v "$ZIMAGE_DIR/Image.gz-dtb" "$TEMP_DIR/"
@@ -263,54 +182,43 @@ jobs:
             cp -v "$ZIMAGE_DIR/Image" "$TEMP_DIR/"
           fi
 
-          # Copy DTBs if available
           if [ -d "$ZIMAGE_DIR/dts/vendor/qcom" ]; then
             mkdir -p "$TEMP_DIR/dtb"
             cp -v "$ZIMAGE_DIR"/dts/vendor/qcom/*.dtb "$TEMP_DIR/dtb/" 2>/dev/null || true
             cp -v "$ZIMAGE_DIR"/dts/vendor/qcom/*.dtbo "$TEMP_DIR/dtb/" 2>/dev/null || true
           fi
 
-          # Generate filename
           VERSION="${{ inputs.version != '' && inputs.version || github.run_number }}"
-          BUILD_DATE=$(date +%Y%m%d-%H%M%S)
           ZIP_NAME="Capybara-Kernel-v${VERSION}-$(date +%Y%m%d).zip"
 
-          # Package
           cd "$TEMP_DIR"
           zip -r9 "../$ZIP_NAME" ./*
           cd ..
 
           rm -rf "$TEMP_DIR"
-
           echo "ZIP_PATH=$PWD/$ZIP_NAME" >> $GITHUB_ENV
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-          echo "Package created: $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
+          echo "Package: $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
 
-      # ==================== Upload artifacts ====================
       - name: Upload kernel package
         uses: actions/upload-artifact@v7
         with:
           name: Capybara-Kernel
           path: ${{ env.ZIP_PATH }}
+          archive: false
           if-no-files-found: error
 
-      - name: Upload build log
-        uses: actions/upload-artifact@v7
-        with:
-          name: Build-Log
-          path: build.log
-          if-no-files-found: ignore
-
-      # ==================== Summary ====================
       - name: Build summary
         run: |
-          echo "## Build Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Kernel** | 6.6.77 Capybara CLO |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Clang** | ${{ env.CLANG_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **BBG** | built-in |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Artifact** | ${{ env.ZIP_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## Build Complete
+
+          | Item | Value |
+          |------|-------|
+          | **Kernel** | 6.6.77 Capybara CLO |
+          | **Clang** | ${{ env.CLANG_VERSION }} |
+          | **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |
+          | **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |
+          | **BBG** | built-in |
+          | **Artifact** | ${{ env.ZIP_NAME }} |
+          EOF
