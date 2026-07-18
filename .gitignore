@@ -10,12 +10,6 @@
 #
 # Normal rules (sorted alphabetically)
 #
-# Do not ignore .github directory (needed for GitHub Actions)
-!.github/
-!.github/workflows/
-!.github/workflows/*.yml
-!.github/workflows/*.yaml
-#
 .*
 *.a
 *.asn1.[ch]
@@ -109,6 +103,10 @@ modules.order
 !.kunitconfig
 !.mailmap
 !.rustfmt.toml
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
 
 #
 # Generated include files
