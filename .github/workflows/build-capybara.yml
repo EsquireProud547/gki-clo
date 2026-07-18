@@ -113,7 +113,8 @@ jobs:
           chmod +x clang-${{ env.CLANG_VERSION }}/bin/clang
           echo "$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_PATH
           echo "CLANG_PATH=$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_ENV
-          clang --version | head -3
+          # Use full path so this step shows the correct clang (GITHUB_PATH only applies to subsequent steps)
+          $PWD/clang-${{ env.CLANG_VERSION }}/bin/clang --version | head -3
 
       # ==================== Ccache ====================
       - name: Setup ccache
