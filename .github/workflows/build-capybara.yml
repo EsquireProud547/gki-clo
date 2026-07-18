@@ -149,6 +149,12 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git \
             -b "$SUSFS_BRANCH" --depth 1 susfs4ksu
 
+          # Run context fixup for CLO kernel before applying SUSFS patch
+          if [ -f ".github/actions/fixup_susfs.sh" ]; then
+            echo "Running CLO kernel context fixup..."
+            bash .github/actions/fixup_susfs.sh .
+          fi
+
           # Apply main patch
           SUSFS_PATCH="susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
           if [ -f "$SUSFS_PATCH" ]; then
