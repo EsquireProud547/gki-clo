@@ -180,18 +180,18 @@ jobs:
           # Inject SUSFS configs if enabled
           if [ "${{ inputs.enable_susfs }}" = "true" ]; then
             echo "Injecting SUSFS configs..."
-            cat >> arch/arm64/configs/capybara_defconfig << 'SUSFS_CFG'
-
-# ReSukiSU + SUSFS
-CONFIG_KSU=y
-CONFIG_KSU_SUSFS=y
-CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
-SUSFS_CFG
+            {
+              echo ""
+              echo "# ReSukiSU + SUSFS"
+              echo "CONFIG_KSU=y"
+              echo "CONFIG_KSU_SUSFS=y"
+              echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y"
+              echo "CONFIG_KSU_SUSFS_SUS_PATH=y"
+              echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y"
+              echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y"
+              echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y"
+              echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y"
+            } >> arch/arm64/configs/capybara_defconfig
           fi
 
           # Ensure BBG is enabled
