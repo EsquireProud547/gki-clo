@@ -54,11 +54,16 @@ jobs:
             dotnet* aspnetcore* netstandard* || true
           df -h /
 
-          # 10GB swap for ThinLTO
-          sudo fallocate -l 10G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          # 10GB swap for ThinLTO (handle existing swap gracefully)
+          if swapon --show 2>/dev/null | grep -q /swapfile; then
+            echo "Swap already active"
+          else
+            sudo rm -f /swapfile
+            sudo dd if=/dev/zero of=/swapfile bs=1M count=10240 status=progress
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+          fi
           free -h
 
       - name: Install build dependencies
