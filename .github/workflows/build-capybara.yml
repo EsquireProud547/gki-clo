@@ -8,10 +8,9 @@
 #   - AnyKernel3 打包
 # ============================================
 
-name: 构建 Capybara Kernel
+name: Build Capybara Kernel
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CLANG_VERSION: clang-r596125
   CLANG_BRANCH: android17-release
 
@@ -19,20 +18,20 @@ on:
   workflow_dispatch:
     inputs:
       enable_susfs:
-        description: "启用 SUSFS (隐藏 root 痕迹)"
+        description: "Enable SUSFS (hide root traces)"
         type: boolean
         default: true
       ksu_branch:
-        description: "ReSukiSU 分支 (留空=main)"
+        description: "ReSukiSU branch (leave empty = main)"
         type: string
         default: "main"
       version:
-        description: "自定义版本名 (可选)"
+        description: "Custom version name (optional)"
         type: string
         default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 permissions:
@@ -41,7 +40,7 @@ permissions:
 
 jobs:
   build:
-    name: "Capybara-${{ inputs.enable_susfs && 'SUSFS' || 'Clean' }}"
+    name: "capybara-${{ inputs.enable_susfs == true && 'susfs' || 'clean' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -51,150 +50,137 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
-      # ==================== 构建信息 ====================
-      - name: 构建信息摘要
+      # ==================== Build Info ====================
+      - name: Build configuration summary
         run: |
           echo "========================================"
-          echo "     Capybara Kernel 构建配置"
+          echo "    Capybara Kernel Build Config"
           echo "========================================"
-          echo "内核分支      : main"
-          echo "Clang 版本    : ${{ env.CLANG_VERSION }} (${{ env.CLANG_BRANCH }})"
-          echo "KSU 变体      : ReSukiSU"
-          echo "KSU 分支      : ${{ inputs.ksu_branch || 'main' }}"
-          echo "SUSFS         : ${{ inputs.enable_susfs && '启用' || '禁用' }}"
-          echo "BBG           : 已内置 (capybara_defconfig)"
+          echo "Kernel branch  : main"
+          echo "Clang version  : ${{ env.CLANG_VERSION }} (${{ env.CLANG_BRANCH }})"
+          echo "KSU variant    : ReSukiSU"
+          echo "KSU branch     : ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }}"
+          echo "SUSFS          : ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }}"
+          echo "BBG            : built-in (capybara_defconfig)"
           echo "========================================"
 
-      # ==================== 检出源码 ====================
-      - name: 检出内核源码
+      # ==================== Checkout ====================
+      - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      # ==================== 清理磁盘空间 ====================
-      - name: 清理磁盘空间
-        uses: jlumbroso/free-disk-space@main
+      # ==================== Free disk space ====================
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: true
           android: true
           dotnet: true
           haskell: true
           large-packages: false
-          docker-images: false
-          swap-storage: false
 
-      # ==================== 安装依赖 ====================
-      - name: 安装编译依赖
+      # ==================== Install dependencies ====================
+      - name: Install build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
             ccache flex bison libncurses-dev libssl-dev libelf-dev \
             cpio wget curl jq git zip unzip bc \
-            gcc g++ make pahole dwarves device-tree-compiler \
-            python3 python3-pip
+            gcc g++ make device-tree-compiler python3
 
-      # ==================== 缓存 Clang ====================
-      - name: 缓存 Clang
+      # ==================== Download Clang ====================
+      - name: Cache Clang toolchain
         id: cache-clang
         uses: actions/cache@v4
         with:
           path: clang-${{ env.CLANG_VERSION }}
-          key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}-v1
+          key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
 
-      - name: 下载 Clang ${{ env.CLANG_VERSION }}
+      - name: Download Clang ${{ env.CLANG_VERSION }}
         if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           mkdir -p clang-${{ env.CLANG_VERSION }}
-          echo "正在下载 Clang ${{ env.CLANG_VERSION }}..."
-          # AOSP Git 仓库 -> tar.gz 直接解压
+          echo "Downloading Clang ${{ env.CLANG_VERSION }}..."
           curl -fLSs \
             "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.CLANG_BRANCH }}/${{ env.CLANG_VERSION }}.tar.gz" \
             | tar -xz -C clang-${{ env.CLANG_VERSION }}/
-          echo "Clang 下载完成"
+          echo "Done."
 
-      - name: 查看 Clang 版本
+      - name: Verify Clang
         run: |
           chmod +x clang-${{ env.CLANG_VERSION }}/bin/clang
           echo "$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_PATH
-          echo "CCACHE_PATH=$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_ENV
-          clang --version
+          echo "CLANG_PATH=$PWD/clang-${{ env.CLANG_VERSION }}/bin" >> $GITHUB_ENV
+          clang --version | head -3
 
-      # ==================== 缓存 ccache ====================
-      - name: 配置 ccache
+      # ==================== Ccache ====================
+      - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: capybara-${{ github.sha }}
-          max-size: 3G
+          key: "capybara-${{ github.sha }}"
+          max-size: "3G"
 
-      # ==================== 应用 ReSukiSU ====================
-      - name: 应用 ReSukiSU
+      # ==================== Apply ReSukiSU ====================
+      - name: Apply ReSukiSU
         run: |
-          KSU_BRANCH="${{ inputs.ksu_branch || 'main' }}"
-          echo "正在应用 ReSukiSU (分支: $KSU_BRANCH)..."
+          KSU_BRANCH="${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }}"
+          echo "Applying ReSukiSU (branch: $KSU_BRANCH)..."
 
-          # 克隆 ReSukiSU 仓库
           git clone --depth 1 https://github.com/ReSukiSU/ReSukiSU.git -b "$KSU_BRANCH" ReSukiSU
-
-          # 使用 setup.sh 集成到内核 (运行在内核源码根目录)
           cd ReSukiSU
           bash kernel/setup.sh "$KSU_BRANCH"
           cd ..
 
-          # 确认 KernelSU 目录已生成
           if [ -d "KernelSU" ]; then
-            KSU_HASH=$(git -C ReSukiSU log -1 --oneline 2>/dev/null || echo "unknown")
-            echo "✅ ReSukiSU 集成成功: $KSU_HASH"
+            echo "ReSukiSU integration successful."
           else
-            echo "⚠️ KernelSU 目录未生成，检查 setup.sh 是否成功"
-            ls -la KernelSU 2>/dev/null || echo "KernelSU 目录不存在"
+            echo "Warning: KernelSU directory not found."
           fi
 
-      # ==================== 应用 SUSFS 补丁 ====================
-      - name: 应用 SUSFS 补丁
+      # ==================== Apply SUSFS ====================
+      - name: Apply SUSFS patches
         if: inputs.enable_susfs
         run: |
-          echo "正在应用 SUSFS 补丁..."
+          echo "Applying SUSFS patches..."
           SUSFS_BRANCH="gki-android15-6.6"
 
-          # 克隆 SUSFS 仓库
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" --depth 1 susfs4ksu
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git \
+            -b "$SUSFS_BRANCH" --depth 1 susfs4ksu
 
-          # 应用主补丁
+          # Apply main patch
           SUSFS_PATCH="susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
           if [ -f "$SUSFS_PATCH" ]; then
-            echo "应用补丁: $SUSFS_PATCH"
-            patch -p1 --forward < "$SUSFS_PATCH" || echo "⚠️ 补丁部分失败（可能已应用）"
+            patch -p1 --forward < "$SUSFS_PATCH" || echo "Patch partially applied (maybe already applied)."
           else
-            echo "⚠️ 未找到 SUSFS 主补丁，尝试查找可用补丁..."
-            ls susfs4ksu/kernel_patches/ 2>/dev/null || echo "kernel_patches 目录不存在"
+            echo "SUSFS patch not found, skipping."
+            ls susfs4ksu/kernel_patches/ 2>/dev/null
           fi
 
-          # 复制头文件
+          # Copy header files
           if [ -d "susfs4ksu/kernel_patches/include/linux" ]; then
             cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>/dev/null || true
           fi
 
-          # 复制 fs 文件
+          # Copy fs files
           if [ -d "susfs4ksu/kernel_patches/fs" ]; then
             cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>/dev/null || true
           fi
 
-          echo "✅ SUSFS 补丁应用完成"
-          SUSFS_HASH=$(git -C susfs4ksu log -1 --oneline 2>/dev/null || echo "unknown")
-          echo "SUSFS 版本: $SUSFS_HASH"
+          echo "SUSFS patch application finished."
 
-      # ==================== 配置内核 ====================
-      - name: 配置内核 (capybara_defconfig)
+      # ==================== Configure kernel ====================
+      - name: Configure kernel (capybara_defconfig)
         run: |
+          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
 
-          # 如果启用了 SUSFS，注入配置项到 defconfig
-          if [ "${{ inputs.enable_susfs }}" == "true" ]; then
-            echo "注入 SUSFS 配置项..."
-            cat >> arch/arm64/configs/capybara_defconfig << 'SUSFS_EOF'
+          # Inject SUSFS configs if enabled
+          if [ "${{ inputs.enable_susfs }}" = "true" ]; then
+            echo "Injecting SUSFS configs..."
+            cat >> arch/arm64/configs/capybara_defconfig << 'SUSFS_CFG'
 
 # ReSukiSU + SUSFS
 CONFIG_KSU=y
@@ -205,66 +191,62 @@ CONFIG_KSU_SUSFS_SUS_MOUNT=y
 CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y
 CONFIG_KSU_SUSFS_SUS_KSTAT=y
 CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
-SUSFS_EOF
+SUSFS_CFG
           fi
 
-          # 确保 BBG 已启用 (capybara_defconfig 已有，做二次确认)
+          # Ensure BBG is enabled
           grep -q "CONFIG_BBG=y" arch/arm64/configs/capybara_defconfig || \
             echo "CONFIG_BBG=y" >> arch/arm64/configs/capybara_defconfig
 
-          # 执行 defconfig
-          echo "使用 capybara_defconfig 配置..."
+          # Run defconfig
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
-          # 输出关键配置状态
-          echo "=== 关键配置确认 ==="
-          grep -E "CONFIG_KSU|CONFIG_BBG|CONFIG_NTSYNC|CONFIG_OVERLAY_FS|CONFIG_SECCOMP|CONFIG_NAMESPACES" out/.config | sort
+          # Verify key configs
+          echo "=== Key configs ==="
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES; do
+            grep -q "^${cfg}=y" out/.config && echo "$cfg=y" || echo "$cfg=NOT SET"
+          done
 
-      # ==================== 编译内核 ====================
-      - name: 编译内核
+      # ==================== Build ====================
+      - name: Build kernel
         run: |
+          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/clang-${{ env.CLANG_VERSION }}/bin:$PATH"
-
-          # ccache 配置
           export CCACHE_DIR="$PWD/.ccache"
           export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
           export CCACHE_NOHASHDIR="true"
           export CCACHE_HARDLINK="true"
 
           JOBS=$(nproc --all 2>/dev/null || echo 16)
-          echo "使用 $JOBS 个并行任务编译..."
+          echo "Building with $JOBS parallel jobs..."
 
-          # 编译 (使用 ccache 加速)
-          make -j$JOBS O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" 2>&1 | tee build.log
+          make -j"$JOBS" O=out CC="ccache clang" LLVM=1 LLVM_IAS=1 KCFLAGS="-w" 2>&1 | tee build.log
 
-          # 检查结果
           if [ -f "out/arch/arm64/boot/Image" ]; then
-            echo "========================================"
-            echo "✅ 内核编译成功!"
-            echo "========================================"
-            echo "内核版本:"
+            echo "============================================"
+            echo "  Kernel build SUCCESSFUL!"
+            echo "============================================"
             strings out/arch/arm64/boot/Image | grep 'Linux version' | head -1
             ls -lh out/arch/arm64/boot/Image
           else
-            echo "========================================"
-            echo "❌ 内核编译失败!"
-            echo "========================================"
-            tail -80 build.log
+            echo "============================================"
+            echo "  Kernel build FAILED!"
+            echo "============================================"
+            tail -100 build.log
             exit 1
           fi
 
-      # ==================== 打包 AnyKernel3 ====================
-      - name: 打包 AnyKernel3 刷机包
+      # ==================== Package with AnyKernel3 ====================
+      - name: Package AnyKernel3 zip
         run: |
-          echo "正在创建 AnyKernel3 刷机包..."
+          echo "Creating AnyKernel3 flashable zip..."
 
           TEMP_DIR="anykernel_temp"
           rm -rf "$TEMP_DIR"
           cp -r anykernel "$TEMP_DIR"
 
-          # 复制内核映像到刷机包
+          # Copy kernel image
           ZIMAGE_DIR="out/arch/arm64/boot"
           if [ -f "$ZIMAGE_DIR/Image.gz-dtb" ]; then
             cp -v "$ZIMAGE_DIR/Image.gz-dtb" "$TEMP_DIR/"
@@ -274,59 +256,54 @@ SUSFS_EOF
             cp -v "$ZIMAGE_DIR/Image" "$TEMP_DIR/"
           fi
 
-          # 复制 DTBs
+          # Copy DTBs if available
           if [ -d "$ZIMAGE_DIR/dts/vendor/qcom" ]; then
             mkdir -p "$TEMP_DIR/dtb"
-            cp -v $ZIMAGE_DIR/dts/vendor/qcom/*.dtb "$TEMP_DIR/dtb/" 2>/dev/null || true
-            cp -v $ZIMAGE_DIR/dts/vendor/qcom/*.dtbo "$TEMP_DIR/dtb/" 2>/dev/null || true
+            cp -v "$ZIMAGE_DIR"/dts/vendor/qcom/*.dtb "$TEMP_DIR/dtb/" 2>/dev/null || true
+            cp -v "$ZIMAGE_DIR"/dts/vendor/qcom/*.dtbo "$TEMP_DIR/dtb/" 2>/dev/null || true
           fi
 
-          # 生成文件名
-          VERSION="${{ inputs.version || github.run_number }}"
+          # Generate filename
+          VERSION="${{ inputs.version != '' && inputs.version || github.run_number }}"
           BUILD_DATE=$(date +%Y%m%d-%H%M%S)
-          KSU_TAG=${{ inputs.enable_susfs && 'SUSFS' || 'NoSUSFS' }}
-          ZIP_NAME="Capybara-Kernel-v${VERSION}-${KSU_TAG}-${BUILD_DATE}.zip"
+          ZIP_NAME="Capybara-Kernel-v${VERSION}-$(date +%Y%m%d).zip"
 
-          # 打包 zip
+          # Package
           cd "$TEMP_DIR"
           zip -r9 "../$ZIP_NAME" ./*
           cd ..
 
-          # 清理
           rm -rf "$TEMP_DIR"
 
-          # 设置输出变量
           echo "ZIP_PATH=$PWD/$ZIP_NAME" >> $GITHUB_ENV
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-          echo "✅ 刷机包创建完成: $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
+          echo "Package created: $ZIP_NAME ($(du -h "$ZIP_NAME" | cut -f1))"
 
-      # ==================== 上传产物 ====================
-      - name: 上传刷机包
+      # ==================== Upload artifacts ====================
+      - name: Upload kernel package
         uses: actions/upload-artifact@v4
         with:
-          name: Capybara-Kernel-${{ inputs.enable_susfs && 'SUSFS' || 'Clean' }}
+          name: Capybara-Kernel
           path: ${{ env.ZIP_PATH }}
           if-no-files-found: error
 
-      - name: 上传编译日志
+      - name: Upload build log
         uses: actions/upload-artifact@v4
         with:
           name: Build-Log
           path: build.log
           if-no-files-found: ignore
 
-      # ==================== 构建摘要 ====================
-      - name: 构建摘要
+      # ==================== Summary ====================
+      - name: Build summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY'
-          ## ✅ 构建完成
-
-          | 项目 | 值 |
-          |:---|---:|
-          | **内核版本** | 6.6.77 (Capybara CLO) |
-          | **Clang 版本** | ${{ env.CLANG_VERSION }} |
-          | **ReSukiSU** | ${{ inputs.ksu_branch || 'main' }} |
-          | **SUSFS** | ${{ inputs.enable_susfs && '✅ 已启用' || '❌ 未启用' }} |
-          | **BBG** | ✅ 已内置 |
-          | **输出文件** | ${{ env.ZIP_NAME }} |
-          SUMMARY
+          echo "## Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Kernel** | 6.6.77 Capybara CLO |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Clang** | ${{ env.CLANG_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **BBG** | built-in |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Artifact** | ${{ env.ZIP_NAME }} |" >> $GITHUB_STEP_SUMMARY
