@@ -13,8 +13,6 @@ name: Build Capybara Kernel
 env:
   CLANG_VERSION: clang-r596125
   CLANG_BRANCH: android17-release
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 on:
   workflow_dispatch:
@@ -68,7 +66,7 @@ jobs:
 
       # ==================== Checkout ====================
       - name: Checkout kernel source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -95,7 +93,7 @@ jobs:
       # ==================== Download Clang ====================
       - name: Cache Clang toolchain
         id: cache-clang
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: clang-${{ env.CLANG_VERSION }}
           key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
@@ -119,7 +117,7 @@ jobs:
 
       # ==================== Ccache ====================
       - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@v1.2.23
         with:
           key: "capybara-${{ github.sha }}"
           max-size: "3G"
@@ -283,14 +281,14 @@ jobs:
 
       # ==================== Upload artifacts ====================
       - name: Upload kernel package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Capybara-Kernel
           path: ${{ env.ZIP_PATH }}
           if-no-files-found: error
 
       - name: Upload build log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Build-Log
           path: build.log
