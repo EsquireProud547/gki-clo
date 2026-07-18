@@ -13,6 +13,8 @@ name: Build Capybara Kernel
 env:
   CLANG_VERSION: clang-r596125
   CLANG_BRANCH: android17-release
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 on:
   workflow_dispatch:
@@ -128,10 +130,10 @@ jobs:
           KSU_BRANCH="${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }}"
           echo "Applying ReSukiSU (branch: $KSU_BRANCH)..."
 
-          git clone --depth 1 https://github.com/ReSukiSU/ReSukiSU.git -b "$KSU_BRANCH" ReSukiSU
-          cd ReSukiSU
-          bash kernel/setup.sh "$KSU_BRANCH"
-          cd ..
+          # NOTE: setup.sh must be run from kernel root (where drivers/ lives)
+          # It will clone ReSukiSU itself into KernelSU/ directory
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" \
+            | bash -s -- "$KSU_BRANCH"
 
           if [ -d "KernelSU" ]; then
             echo "ReSukiSU integration successful."
