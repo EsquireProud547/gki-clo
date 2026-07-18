@@ -48,22 +48,19 @@ jobs:
 
       - name: Fast cleanup + swap
         run: |
-          # Quick disk cleanup (target only bulky Android SDK)
+          # Quick disk cleanup
           sudo rm -rf /usr/share/dotnet /usr/local/share/powershell /opt/hostedtoolcache/go
           sudo apt-get remove -y -qq 2>/dev/null \
             dotnet* aspnetcore* netstandard* || true
           df -h /
 
-          # 10GB swap for ThinLTO (handle existing swap gracefully)
-          if swapon --show 2>/dev/null | grep -q /swapfile; then
-            echo "Swap already active"
-          else
-            sudo rm -f /swapfile
-            sudo dd if=/dev/zero of=/swapfile bs=1M count=10240 status=progress
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-            sudo swapon /swapfile
-          fi
+          # Disable existing swap and create fresh 10GB swap
+          sudo swapoff -a 2>/dev/null || true
+          sudo rm -f /swapfile /mnt/swapfile 2>/dev/null || true
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=10240 status=progress
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
           free -h
 
       - name: Install build dependencies
