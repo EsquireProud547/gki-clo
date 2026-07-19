@@ -131,6 +131,9 @@ jobs:
           sed -i 's/# CONFIG_HZ_300 is not set/CONFIG_HZ_300=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_LTO_NONE=y/# CONFIG_LTO_NONE is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_LTO_CLANG_THIN is not set/CONFIG_LTO_CLANG_THIN=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/CONFIG_ZRAM_DEF_COMP_LZORLE=y/# CONFIG_ZRAM_DEF_COMP_LZORLE is not set/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_ZRAM_DEF_COMP_LZ4 is not set/CONFIG_ZRAM_DEF_COMP_LZ4=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/CONFIG_ZRAM_DEF_COMP="lzo-rle"/CONFIG_ZRAM_DEF_COMP="lz4"/' arch/arm64/configs/capybara_defconfig
 
           if [ "${{ inputs.enable_susfs }}" = "true" ]; then
             {
