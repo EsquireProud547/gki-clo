@@ -117,30 +117,18 @@ jobs:
           echo "Applying SUSFS patches..."
           git clone https://gitlab.com/simonpunk/susfs4ksu.git \
             -b gki-android15-6.6 --depth 1 susfs4ksu
-
-          if [ -f ".github/actions/fixup_susfs.sh" ]; then
-            bash .github/actions/fixup_susfs.sh .
-          fi
-
+          [ -f ".github/actions/fixup_susfs.sh" ] && bash .github/actions/fixup_susfs.sh .
           SUSFS_PATCH="susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
-          if [ -f "$SUSFS_PATCH" ]; then
-            patch -p1 --forward < "$SUSFS_PATCH" || true
-          fi
-
+          [ -f "$SUSFS_PATCH" ] && patch -p1 --forward < "$SUSFS_PATCH" || true
           cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>/dev/null || true
           cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>/dev/null || true
 
       - name: Configure kernel
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
+          export ARCH=arm64 SUBARCH=arm64
 
-          # Apply config overrides before make defconfig
-          # HZ_300 for smoother UI
           sed -i 's/CONFIG_HZ_250=y/# CONFIG_HZ_250 is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_HZ_300 is not set/CONFIG_HZ_300=y/' arch/arm64/configs/capybara_defconfig
-
-          # ThinLTO for better performance
           sed -i 's/CONFIG_LTO_NONE=y/# CONFIG_LTO_NONE is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_LTO_CLANG_THIN is not set/CONFIG_LTO_CLANG_THIN=y/' arch/arm64/configs/capybara_defconfig
 
@@ -148,59 +136,45 @@ jobs:
             {
               echo ""
               echo "# ReSukiSU + SUSFS"
-              echo "CONFIG_KSU=y"
-              echo "CONFIG_KSU_SUSFS=y"
-              echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y"
-              echo "CONFIG_KSU_SUSFS_SUS_PATH=y"
-              echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y"
-              echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST=y"
-              echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y"
-              echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y"
+              for cfg in CONFIG_KSU CONFIG_KSU_SUSFS CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT CONFIG_KSU_SUSFS_SUS_PATH CONFIG_KSU_SUSFS_SUS_MOUNT CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_KSU_DENYLIST CONFIG_KSU_SUSFS_SUS_KSTAT CONFIG_KSU_SUSFS_SUS_OVERLAYFS; do
+                echo "${cfg}=y"
+              done
             } >> arch/arm64/configs/capybara_defconfig
           fi
-
           grep -q "CONFIG_BBG=y" arch/arm64/configs/capybara_defconfig || \
             echo "CONFIG_BBG=y" >> arch/arm64/configs/capybara_defconfig
 
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
-          # AutoFDO: download pre-built GKI profile and enable PGO
+          # AutoFDO
           mkdir -p afdo_profile
           curl -fLSs \
             "https://android.googlesource.com/kernel/common/+archive/refs/heads/android15-6.6/android/gki/aarch64/afdo.tar.gz" \
             | tar -xz -C afdo_profile/
           if [ -f "afdo_profile/kernel.afdo" ]; then
             scripts/config --file out/.config -e CONFIG_AUTOFDO_CLANG
-            # scripts/Makefile.autofdo reads $CLANG_AUTOFDO_PROFILE, not $AFDO_PROFILE
             echo "CLANG_AUTOFDO_PROFILE=$PWD/afdo_profile/kernel.afdo" >> $GITHUB_ENV
-            echo "CONFIG_AUTOFDO_CLANG=y ✓ (profile: $(du -h afdo_profile/kernel.afdo | cut -f1))"
-          else
-            echo "⚠ AutoFDO profile not found, skipping"
+            echo "  CONFIG_AUTOFDO_CLANG=y"
           fi
 
-          # Reduce debug overhead (ABI-verified)
+          # Debug reduction (ABI-verified)
           scripts/config --file out/.config \
             -e CONFIG_DEBUG_INFO_REDUCED \
-            -d CONFIG_DEBUG_MISC \
-            -d CONFIG_BT_DEBUGFS \
-            -d CONFIG_DEBUG_MEMORY_INIT \
-            -d CONFIG_PROFILING \
-            -d CONFIG_PRINTK_CALLER \
-            -d CONFIG_RCU_TRACE \
+            -d CONFIG_DEBUG_MISC -d CONFIG_BT_DEBUGFS \
+            -d CONFIG_DEBUG_MEMORY_INIT -d CONFIG_PROFILING \
+            -d CONFIG_PRINTK_CALLER -d CONFIG_RCU_TRACE \
             -d CONFIG_CMA_DEBUGFS \
-            -d CONFIG_UBSAN \
-            -d CONFIG_UBSAN_BOUNDS \
-            -d CONFIG_UBSAN_ARRAY_BOUNDS \
-            -d CONFIG_UBSAN_LOCAL_BOUNDS \
-            -d CONFIG_UBSAN_SANITIZE_ALL \
-            -d CONFIG_UBSAN_TRAP \
-            -d CONFIG_CLEANCACHE \
-            -d CONFIG_PRINTK_TIME
+            -d CONFIG_UBSAN -d CONFIG_UBSAN_BOUNDS \
+            -d CONFIG_UBSAN_ARRAY_BOUNDS -d CONFIG_UBSAN_LOCAL_BOUNDS \
+            -d CONFIG_UBSAN_SANITIZE_ALL -d CONFIG_UBSAN_TRAP \
+            -d CONFIG_CLEANCACHE -d CONFIG_PRINTK_TIME
           make O=out olddefconfig CC=clang LLVM=1 LLVM_IAS=1 2>/dev/null
 
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
-            grep -q "^${cfg}=y\|^${cfg}=[0-9]" out/.config && echo "  $cfg=$(grep "^${cfg}=" out/.config | cut -d= -f2)" || echo "  $cfg=NOT SET"
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN \
+            CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
+            val=$(grep "^${cfg}=" out/.config 2>/dev/null | cut -d= -f2)
+            [ -n "$val" ] && echo "  $cfg=$val" || echo "  $cfg=NOT SET"
           done
 
       - name: Build kernel
