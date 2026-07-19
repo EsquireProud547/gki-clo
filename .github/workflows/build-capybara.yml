@@ -158,10 +158,38 @@ jobs:
           grep -q "CONFIG_BBG=y" arch/arm64/configs/capybara_defconfig || \
             echo "CONFIG_BBG=y" >> arch/arm64/configs/capybara_defconfig
 
+          # Droidspaces container runtime support
+          DROIDSPACES_OPTS="
+            CONFIG_SYSVIPC=y
+            CONFIG_POSIX_MQUEUE=y
+            CONFIG_IPC_NS=y
+            CONFIG_PID_NS=y
+            CONFIG_USER_NS=y
+            CONFIG_CGROUP_DEVICE=y
+            CONFIG_CGROUP_PIDS=y
+            CONFIG_DEVTMPFS=y
+            CONFIG_TMPFS_POSIX_ACL=y
+            CONFIG_BRIDGE_NETFILTER=y
+            CONFIG_NF_TABLES=y
+            CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+            CONFIG_IP_SET=y"
+          for entry in $DROIDSPACES_OPTS; do
+            key="${entry%%=*}"
+            if grep -q "^${key}=" arch/arm64/configs/capybara_defconfig 2>/dev/null; then
+              : # already enabled, skip
+            elif grep -q "^# ${key} is not set" arch/arm64/configs/capybara_defconfig 2>/dev/null; then
+              sed -i "s/^# ${key} is not set/${entry}/" arch/arm64/configs/capybara_defconfig
+              echo "  Droidspaces: ${entry}"
+            else
+              echo "$entry" >> arch/arm64/configs/capybara_defconfig
+              echo "  Droidspaces: ${entry} (appended)"
+            fi
+          done
+
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES; do
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_SYSVIPC CONFIG_PID_NS CONFIG_DEVTMPFS CONFIG_USER_NS; do
             grep -q "^${cfg}=y\|^${cfg}=[0-9]" out/.config && echo "  $cfg=$(grep "^${cfg}=" out/.config | cut -d= -f2)" || echo "  $cfg=NOT SET"
           done
 
