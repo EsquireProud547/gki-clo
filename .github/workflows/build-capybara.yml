@@ -161,14 +161,15 @@ jobs:
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
           # AutoFDO: download pre-built GKI profile and enable PGO
-          AFDO_PROFILE="$PWD/afdo_profile/kernel.afdo"
           mkdir -p afdo_profile
           curl -fLSs \
             "https://android.googlesource.com/kernel/common/+archive/refs/heads/android15-6.6/android/gki/aarch64/afdo.tar.gz" \
             | tar -xz -C afdo_profile/
-          if [ -f "$AFDO_PROFILE" ]; then
+          if [ -f "afdo_profile/kernel.afdo" ]; then
             scripts/config --file out/.config -e CONFIG_AUTOFDO_CLANG
-            echo "CONFIG_AUTOFDO_CLANG=y ✓ (profile: $(du -h "$AFDO_PROFILE" | cut -f1))"
+            # scripts/Makefile.autofdo reads $CLANG_AUTOFDO_PROFILE, not $AFDO_PROFILE
+            echo "CLANG_AUTOFDO_PROFILE=$PWD/afdo_profile/kernel.afdo" >> $GITHUB_ENV
+            echo "CONFIG_AUTOFDO_CLANG=y ✓ (profile: $(du -h afdo_profile/kernel.afdo | cut -f1))"
           else
             echo "⚠ AutoFDO profile not found, skipping"
           fi
