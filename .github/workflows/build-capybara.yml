@@ -160,8 +160,28 @@ jobs:
 
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
+          # Reduce debug overhead (ABI-verified)
+          scripts/config --file out/.config \
+            -e CONFIG_DEBUG_INFO_REDUCED \
+            -d CONFIG_DEBUG_MISC \
+            -d CONFIG_BT_DEBUGFS \
+            -d CONFIG_DEBUG_MEMORY_INIT \
+            -d CONFIG_PROFILING \
+            -d CONFIG_PRINTK_CALLER \
+            -d CONFIG_RCU_TRACE \
+            -d CONFIG_CMA_DEBUGFS \
+            -d CONFIG_UBSAN \
+            -d CONFIG_UBSAN_BOUNDS \
+            -d CONFIG_UBSAN_ARRAY_BOUNDS \
+            -d CONFIG_UBSAN_LOCAL_BOUNDS \
+            -d CONFIG_UBSAN_SANITIZE_ALL \
+            -d CONFIG_UBSAN_TRAP \
+            -d CONFIG_CLEANCACHE \
+            -d CONFIG_PRINTK_TIME
+          make O=out olddefconfig CC=clang LLVM=1 LLVM_IAS=1 2>/dev/null
+
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES; do
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD; do
             grep -q "^${cfg}=y\|^${cfg}=[0-9]" out/.config && echo "  $cfg=$(grep "^${cfg}=" out/.config | cut -d= -f2)" || echo "  $cfg=NOT SET"
           done
 
