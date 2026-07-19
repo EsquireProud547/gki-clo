@@ -160,6 +160,19 @@ jobs:
 
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
+          # AutoFDO: download pre-built GKI profile and enable PGO
+          AFDO_PROFILE="$PWD/afdo_profile/kernel.afdo"
+          mkdir -p afdo_profile
+          curl -fLSs \
+            "https://android.googlesource.com/kernel/common/+archive/refs/heads/android15-6.6/android/gki/aarch64/afdo.tar.gz" \
+            | tar -xz -C afdo_profile/
+          if [ -f "$AFDO_PROFILE" ]; then
+            scripts/config --file out/.config -e CONFIG_AUTOFDO_CLANG
+            echo "CONFIG_AUTOFDO_CLANG=y ✓ (profile: $(du -h "$AFDO_PROFILE" | cut -f1))"
+          else
+            echo "⚠ AutoFDO profile not found, skipping"
+          fi
+
           # Reduce debug overhead (ABI-verified)
           scripts/config --file out/.config \
             -e CONFIG_DEBUG_INFO_REDUCED \
@@ -181,7 +194,7 @@ jobs:
           make O=out olddefconfig CC=clang LLVM=1 LLVM_IAS=1 2>/dev/null
 
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD; do
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
             grep -q "^${cfg}=y\|^${cfg}=[0-9]" out/.config && echo "  $cfg=$(grep "^${cfg}=" out/.config | cut -d= -f2)" || echo "  $cfg=NOT SET"
           done
 
@@ -258,5 +271,6 @@ jobs:
           | **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |
           | **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |
           | **BBG** | built-in |
+          | **AutoFDO** | enabled (GKI profile) |
           | **Artifact** | ${{ env.ZIP_NAME }} |
           EOF
