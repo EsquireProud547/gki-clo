@@ -78,7 +78,7 @@ jobs:
           path: clang-${{ env.CLANG_VERSION }}
           key: clang-${{ env.CLANG_VERSION }}-${{ runner.os }}
 
-      - name: Download Clang ${{ env.CLANG_VERSION }}
+      - name: Download Clang toolchain
         if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           mkdir -p clang-${{ env.CLANG_VERSION }}
