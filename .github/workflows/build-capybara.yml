@@ -96,7 +96,11 @@ jobs:
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2.23
         with:
-          key: capybara-${{ github.sha }}
+          key: capybara-clang-${{ env.CLANG_VERSION }}-${{ github.ref_name }}
+          restore-keys: |
+            capybara-clang-${{ env.CLANG_VERSION }}-${{ github.ref_name }}
+            capybara-clang-${{ env.CLANG_VERSION }}-main
+            capybara-clang-${{ env.CLANG_VERSION }}-
           max-size: 3G
 
       - name: Apply ReSukiSU
