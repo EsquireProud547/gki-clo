@@ -135,6 +135,11 @@ jobs:
           sed -i 's/# CONFIG_ZRAM_DEF_COMP_LZ4 is not set/CONFIG_ZRAM_DEF_COMP_LZ4=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_ZRAM_DEF_COMP="lzo-rle"/CONFIG_ZRAM_DEF_COMP="lz4"/' arch/arm64/configs/capybara_defconfig
 
+          # BBRv3: default TCP congestion control
+          echo "CONFIG_TCP_CONG_BBR3=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_DEFAULT_BBR3=y" >> arch/arm64/configs/capybara_defconfig
+          echo "CONFIG_DEFAULT_TCP_CONG=\"bbr3\"" >> arch/arm64/configs/capybara_defconfig
+
           if [ "${{ inputs.enable_susfs }}" = "true" ]; then
             {
               echo ""
