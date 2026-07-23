@@ -48,16 +48,20 @@ jobs:
 
       - name: Fast cleanup + swap
         run: |
-          # Quick disk cleanup
-          sudo rm -rf /usr/share/dotnet /usr/local/share/powershell /opt/hostedtoolcache/go
+          # Aggressive disk cleanup (make room for kernel src + 20GB swap)
+          sudo rm -rf \
+            /usr/share/dotnet /usr/local/share/powershell \
+            /opt/hostedtoolcache/go /usr/local/lib/android \
+            /usr/share/swift /usr/local/share/boost 2>/dev/null || true
           sudo apt-get remove -y -qq 2>/dev/null \
-            dotnet* aspnetcore* netstandard* || true
+            dotnet* aspnetcore* netstandard* mono* ^llvm-.* ^lld-.*  || true
+          sudo apt-get autoremove -y -qq 2>/dev/null || true
           df -h /
 
-          # Disable existing swap and create fresh 10GB swap
+          # Disable existing swap and create fresh 20GB swap (Full LTO)
           sudo swapoff -a 2>/dev/null || true
           sudo rm -f /swapfile /mnt/swapfile 2>/dev/null || true
-          sudo dd if=/dev/zero of=/swapfile bs=1M count=10240 status=progress
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=20480 status=progress
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
@@ -130,7 +134,7 @@ jobs:
           sed -i 's/CONFIG_HZ_250=y/# CONFIG_HZ_250 is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_HZ_300 is not set/CONFIG_HZ_300=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_LTO_NONE=y/# CONFIG_LTO_NONE is not set/' arch/arm64/configs/capybara_defconfig
-          sed -i 's/# CONFIG_LTO_CLANG_THIN is not set/CONFIG_LTO_CLANG_THIN=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_LTO_CLANG_FULL is not set/CONFIG_LTO_CLANG_FULL=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_ZRAM_DEF_COMP_LZORLE=y/# CONFIG_ZRAM_DEF_COMP_LZORLE is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_ZRAM_DEF_COMP_LZ4 is not set/CONFIG_ZRAM_DEF_COMP_LZ4=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_ZRAM_DEF_COMP="lzo-rle"/CONFIG_ZRAM_DEF_COMP="lz4"/' arch/arm64/configs/capybara_defconfig
@@ -181,7 +185,7 @@ jobs:
           make O=out olddefconfig CC=clang LLVM=1 LLVM_IAS=1 2>/dev/null
 
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN \
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_FULL \
             CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
             val=$(grep "^${cfg}=" out/.config 2>/dev/null | cut -d= -f2)
             [ -n "$val" ] && echo "  $cfg=$val" || echo "  $cfg=NOT SET"
@@ -256,7 +260,7 @@ jobs:
           | **Kernel** | 6.6.77 Capybara CLO |
           | **Clang** | ${{ env.CLANG_VERSION }} |
           | **HZ** | 300 |
-          | **LTO** | ThinLTO |
+          | **LTO** | FullLTO |
           | **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |
           | **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |
           | **BBG** | built-in |
