@@ -134,7 +134,7 @@ jobs:
           sed -i 's/CONFIG_HZ_250=y/# CONFIG_HZ_250 is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_HZ_300 is not set/CONFIG_HZ_300=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_LTO_NONE=y/# CONFIG_LTO_NONE is not set/' arch/arm64/configs/capybara_defconfig
-          sed -i 's/# CONFIG_LTO_CLANG_FULL is not set/CONFIG_LTO_CLANG_FULL=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_LTO_CLANG_THIN is not set/CONFIG_LTO_CLANG_THIN=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_ZRAM_DEF_COMP_LZORLE=y/# CONFIG_ZRAM_DEF_COMP_LZORLE is not set/' arch/arm64/configs/capybara_defconfig
           sed -i 's/# CONFIG_ZRAM_DEF_COMP_LZ4 is not set/CONFIG_ZRAM_DEF_COMP_LZ4=y/' arch/arm64/configs/capybara_defconfig
           sed -i 's/CONFIG_ZRAM_DEF_COMP="lzo-rle"/CONFIG_ZRAM_DEF_COMP="lz4"/' arch/arm64/configs/capybara_defconfig
@@ -185,7 +185,7 @@ jobs:
           make O=out olddefconfig CC=clang LLVM=1 LLVM_IAS=1 2>/dev/null
 
           echo "=== Key configs ==="
-          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_FULL \
+          for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN \
             CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
             val=$(grep "^${cfg}=" out/.config 2>/dev/null | cut -d= -f2)
             [ -n "$val" ] && echo "  $cfg=$val" || echo "  $cfg=NOT SET"
@@ -260,7 +260,7 @@ jobs:
           | **Kernel** | 6.6.77 Capybara CLO |
           | **Clang** | ${{ env.CLANG_VERSION }} |
           | **HZ** | 300 |
-          | **LTO** | FullLTO |
+          | **LTO** | ThinLTO |
           | **ReSukiSU** | ${{ inputs.ksu_branch != '' && inputs.ksu_branch || 'main' }} |
           | **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |
           | **BBG** | built-in |
