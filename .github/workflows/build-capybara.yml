@@ -127,6 +127,14 @@ jobs:
           cp -v susfs4ksu/kernel_patches/include/linux/* include/linux/ 2>/dev/null || true
           cp -v susfs4ksu/kernel_patches/fs/* fs/ 2>/dev/null || true
 
+      - name: Apply Droidspaces kABI patch
+        run: |
+          # SYSVIPC kABI fix for GKI 6.6 (Droidspaces):
+          # Moves sysvsem/sysvshm into ANDROID_KABI_RESERVE slots so enabling
+          # CONFIG_SYSVIPC does not shift task_struct offsets (no vendor bootloop).
+          echo "Applying Droidspaces SYSVIPC kABI patch..."
+          patch -p1 --forward < .github/actions/droidspaces_sysvipc.patch
+
       - name: Configure kernel
         run: |
           export ARCH=arm64 SUBARCH=arm64
@@ -155,6 +163,18 @@ jobs:
           fi
           grep -q "CONFIG_BBG=y" arch/arm64/configs/capybara_defconfig || \
             echo "CONFIG_BBG=y" >> arch/arm64/configs/capybara_defconfig
+
+          # Droidspaces: GKI-safe config block (requires the kABI patch above)
+          sed -i 's/# CONFIG_SYSVIPC is not set/CONFIG_SYSVIPC=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_POSIX_MQUEUE is not set/CONFIG_POSIX_MQUEUE=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_PID_NS is not set/CONFIG_PID_NS=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_DEVTMPFS is not set/CONFIG_DEVTMPFS=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_NETFILTER_XT_MATCH_ADDRTYPE is not set/CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y/' arch/arm64/configs/capybara_defconfig
+          grep -q "^CONFIG_IPC_NS=y" arch/arm64/configs/capybara_defconfig || \
+            echo "CONFIG_IPC_NS=y" >> arch/arm64/configs/capybara_defconfig
+          # Optional but recommended: docker/proot compat + tmpfs ACL (NixOS)
+          sed -i 's/# CONFIG_USER_NS is not set/CONFIG_USER_NS=y/' arch/arm64/configs/capybara_defconfig
+          sed -i 's/# CONFIG_TMPFS_POSIX_ACL is not set/CONFIG_TMPFS_POSIX_ACL=y/' arch/arm64/configs/capybara_defconfig
 
           make O=out CC=clang LLVM=1 LLVM_IAS=1 KCFLAGS="-w" capybara_defconfig
 
@@ -186,7 +206,8 @@ jobs:
 
           echo "=== Key configs ==="
           for cfg in CONFIG_KSU CONFIG_BBG CONFIG_NTSYNC CONFIG_HZ CONFIG_LTO_CLANG_THIN \
-            CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG; do
+            CONFIG_OVERLAY_FS CONFIG_SECCOMP CONFIG_NAMESPACES CONFIG_WIREGUARD CONFIG_AUTOFDO_CLANG \
+            CONFIG_SYSVIPC CONFIG_POSIX_MQUEUE CONFIG_IPC_NS CONFIG_PID_NS CONFIG_DEVTMPFS; do
             val=$(grep "^${cfg}=" out/.config 2>/dev/null | cut -d= -f2)
             [ -n "$val" ] && echo "  $cfg=$val" || echo "  $cfg=NOT SET"
           done
@@ -265,5 +286,6 @@ jobs:
           | **SUSFS** | ${{ inputs.enable_susfs == true && 'enabled' || 'disabled' }} |
           | **BBG** | built-in |
           | **AutoFDO** | enabled (GKI profile) |
+          | **Droidspaces** | enabled (kABI patch + GKI configs) |
           | **Artifact** | ${{ env.ZIP_NAME }} |
           EOF

@@ -107,6 +107,8 @@ modules.order
 !.github/workflows/
 !.github/workflows/*.yml
 !.github/workflows/*.yaml
+!.github/actions/
+!.github/actions/*.patch
 
 #
 # Generated include files
